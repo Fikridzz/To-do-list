@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+import 'package:todo_list/helper/database_helper.dart';
 import 'utils/router.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await DBHelper.initDB();
+
   runApp(const MyApp());
 }
 

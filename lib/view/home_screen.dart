@@ -3,7 +3,7 @@ import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:todo_list/conttroller/to_do_controller.dart';
+import 'package:todo_list/provider/to_do_controller.dart';
 import 'package:todo_list/data/to_do_data.dart';
 import 'package:todo_list/utils/router.dart';
 
@@ -12,12 +12,13 @@ class HomeScreen extends HookConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final toDoList = ref.watch(toDoListProvider);
+    final toDoList = ref.watch(toDoControllerProvider);
     final searchCtr = useTextEditingController();
     return Scaffold(
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: const Color(0xFFEE5683),
         onPressed: () {
+          ref.read(dateProvider.notifier).state = DateTime.now();
           _addToDo(context);
         },
         label: const Text('Add Task', style: TextStyle(color: Colors.white)),
@@ -44,9 +45,15 @@ class HomeScreen extends HookConsumerWidget {
                         borderRadius: BorderRadius.all(Radius.circular(10)),
                         borderSide: BorderSide(color: Color(0xFF5D94CA)),
                       ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                        borderSide: BorderSide(color: Color(0xFF5D94CA)),
+                      ),
                     ),
                     onChanged: (value) {
-                      ref.read(toDoListProvider.notifier).searchData(value);
+                      ref
+                          .read(toDoControllerProvider.notifier)
+                          .searchData(value);
                     },
                   ),
                   const SizedBox(height: 24),
@@ -58,22 +65,41 @@ class HomeScreen extends HookConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  ListView.builder(
-                    physics: const NeverScrollableScrollPhysics(),
-                    shrinkWrap: true,
-                    itemCount: toDoList.length,
-                    itemBuilder: (context, index) {
-                      ToDoData item = toDoList[index];
-                      return Column(
-                        children: [
-                          GestureDetector(
-                            onLongPress: () =>
-                                _dialogDeleteItem(context, ref, item),
-                            child: _itemWidget(item, ref),
-                          ),
-                          const SizedBox(height: 16),
-                        ],
+                  toDoList.when(
+                    data: (data) {
+                      return data.isNotEmpty
+                          ? Expanded(
+                              child: ListView.builder(
+                                physics: const NeverScrollableScrollPhysics(),
+                                padding: const EdgeInsets.all(0),
+                                shrinkWrap: true,
+                                itemCount: data.length,
+                                itemBuilder: (context, index) {
+                                  ToDoData item = data[index];
+                                  return Column(
+                                    children: [
+                                      GestureDetector(
+                                        onLongPress: () => _dialogDeleteItem(
+                                            context, ref, item),
+                                        child: _itemWidget(item, ref),
+                                      ),
+                                      const SizedBox(height: 16),
+                                    ],
+                                  );
+                                },
+                              ),
+                            )
+                          : const Center(
+                              child: Text('No data found'),
+                            );
+                    },
+                    error: (error, stackTrace) {
+                      return Center(
+                        child: Text('Error: $error'),
                       );
+                    },
+                    loading: () {
+                      return const Center(child: CircularProgressIndicator());
                     },
                   ),
                   const SizedBox(height: 16),
@@ -120,7 +146,7 @@ class HomeScreen extends HookConsumerWidget {
             activeColor: const Color(0xFFee5683),
             value: data.isDone,
             onChanged: (value) {
-              ref.read(toDoListProvider.notifier).toggleTask(data);
+              ref.read(toDoControllerProvider.notifier).updateData(data);
             },
           ),
           Expanded(
@@ -137,7 +163,7 @@ class HomeScreen extends HookConsumerWidget {
           ),
           const SizedBox(width: 8),
           Text(
-            DateFormat('dd MMM yyyy').format(data.date),
+            data.date,
             style: const TextStyle(
               fontSize: 12,
               color: Colors.grey,
@@ -155,104 +181,110 @@ class HomeScreen extends HookConsumerWidget {
     showDialog(
       context: context,
       builder: (dialogContext) {
-        return Consumer(
-          builder: (context, ref, child) {
-            final date = ref.watch(dateProvider);
-            return AlertDialog(
-              title: const Text('Add To Do'),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+        return Center(
+          child: SingleChildScrollView(
+            child: Consumer(
+              builder: (context, ref, child) {
+                final date = ref.watch(dateProvider);
+                return AlertDialog(
+                  title: const Text('Add To Do'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text(
-                        'Task',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      TextField(
-                        controller: titleCtr,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.all(
-                              Radius.circular(10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Task',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: titleCtr,
+                            decoration: const InputDecoration(
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.all(
+                                  Radius.circular(10),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      GestureDetector(
+                        onTap: () {
+                          showDatePicker(
+                            context: context,
+                            initialDate: DateTime.now(),
+                            firstDate: DateTime(2000),
+                            lastDate: DateTime(2050),
+                          ).then((value) {
+                            if (value != null) {
+                              ref.read(dateProvider.notifier).state = value;
+                            }
+                          });
+                        },
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Due date',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            TextField(
+                              controller: dateCtr,
+                              enabled: false,
+                              decoration: InputDecoration(
+                                labelStyle:
+                                    const TextStyle(color: Colors.black),
+                                labelText:
+                                    DateFormat('dd MMM yyyy').format(date),
+                                border: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(10),
+                                  ),
+                                ),
+                                disabledBorder: const OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(
+                                    Radius.circular(10),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  GestureDetector(
-                    onTap: () {
-                      showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2050),
-                      ).then((value) {
-                        if (value != null) {
-                          ref.read(dateProvider.notifier).state = value;
-                        }
-                      });
-                    },
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Due date',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: dateCtr,
-                          enabled: false,
-                          decoration: InputDecoration(
-                            labelStyle: const TextStyle(color: Colors.black),
-                            labelText: DateFormat('dd MMM yyyy').format(date),
-                            border: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                            disabledBorder: const OutlineInputBorder(
-                              borderRadius: BorderRadius.all(
-                                Radius.circular(10),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                  actions: [
+                    TextButton(
+                      onPressed: () {
+                        context.pop();
+                      },
+                      child: const Text('Cancel'),
                     ),
-                  ),
-                ],
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    context.pop();
-                  },
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () {
-                    context.pop();
-                    ref
-                        .read(toDoListProvider.notifier)
-                        .addData(titleCtr.text, date);
-                  },
-                  child: const Text('Save'),
-                ),
-              ],
-            );
-          },
+                    TextButton(
+                      onPressed: () {
+                        context.pop();
+                        ref.read(toDoControllerProvider.notifier).addData(
+                            titleCtr.text,
+                            DateFormat('dd MMM yyyy').format(date));
+                      },
+                      child: const Text('Save'),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
         );
       },
     );
@@ -274,7 +306,7 @@ class HomeScreen extends HookConsumerWidget {
             ),
             TextButton(
               onPressed: () {
-                ref.read(toDoListProvider.notifier).removeData(item);
+                ref.read(toDoControllerProvider.notifier).removeData(item);
                 context.pop();
               },
               child: const Text('Delete'),
